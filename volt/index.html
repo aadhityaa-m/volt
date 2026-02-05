@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoltWatch India | Interactive Energy Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        glass: {
+                            light: 'rgba(255, 255, 255, 0.65)',
+                            dark: 'rgba(15, 23, 42, 0.65)',
+                            border: 'rgba(255, 255, 255, 0.2)',
+                            borderDark: 'rgba(255, 255, 255, 0.05)'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <!-- html2pdf.js for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <script src="dataLogic.js"></script>
+    <script src="mlLogic.js"></script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Glassmorphism Utilities */
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .dark .glass {
+            background: rgba(30, 41, 59, 0.7);
+            /* Slate-800 with opacity */
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .dark .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Liquid Background Blobs */
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);
+            opacity: 0.6;
+            z-index: 0;
+            animation: float 10s infinite ease-in-out alternate;
+        }
+
+        .blob-1 {
+            top: -10%;
+            left: -10%;
+            width: 500px;
+            height: 500px;
+            background: #fb923c;
+            animation-delay: 0s;
+        }
+
+        .blob-2 {
+            bottom: -10%;
+            right: -10%;
+            width: 400px;
+            height: 400px;
+            background: #2dd4bf;
+            animation-delay: 2s;
+        }
+
+        .blob-3 {
+            top: 40%;
+            left: 40%;
+            width: 300px;
+            height: 300px;
+            background: #818cf8;
+            animation-delay: 4s;
+        }
+
+        .dark .blob-1 {
+            background: #c2410c;
+            opacity: 0.4;
+        }
+
+        /* Darker Orange */
+        .dark .blob-2 {
+            background: #0f766e;
+            opacity: 0.3;
+        }
+
+        /* Darker Teal */
+        .dark .blob-3 {
+            background: #4338ca;
+            opacity: 0.3;
+        }
+
+        /* Darker Indigo */
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            100% {
+                transform: translate(30px, -30px) scale(1.1);
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.5);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.8);
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            height: 300px;
+            margin: 0 auto;
+        }
+
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body
+    class="bg-stone-50 dark:bg-slate-900 text-stone-800 dark:text-stone-100 antialiased h-screen flex overflow-hidden relative selection:bg-orange-500 selection:text-white">
+
+    <!-- Liquid Background -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="hidden md:flex flex-col w-64 glass border-r-0 h-full shadow-lg z-20 m-4 rounded-2xl">
+        <div class="p-6 border-b border-white/20 dark:border-white/10">
+            <h1 class="text-2xl font-extrabold text-orange-600 flex items-center gap-2">
+                ⚡ VoltWatch <span class="text-xs bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded">IN</span>
+            </h1>
+            <p class="text-xs text-stone-500 dark:text-stone-400 mt-2">Home Energy Intelligence</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <button onclick="switchView('dashboard')" id="nav-dashboard"
+                class="w-full flex items-center gap-3 px-4 py-3 text-sm font-extrabold rounded-xl transition-all shadow-sm text-orange-600 dark:text-orange-400 glass border-white/40">
+                📊 Live Monitor
+            </button>
+            <button onclick="switchView('inventory')" id="nav-inventory"
+                class="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all text-stone-500 dark:text-stone-400 hover:bg-white/30 dark:hover:bg-white/10 hover:text-stone-700 dark:hover:text-stone-200">
+                📝 Appliance Registry
+            </button>
+            <button onclick="switchView('insights')" id="nav-insights"
+                class="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all text-stone-500 dark:text-stone-400 hover:bg-white/30 dark:hover:bg-white/10 hover:text-stone-700 dark:hover:text-stone-200">
+                💡 Cost Analysis
+            </button>
+            <button onclick="switchView('analytics')" id="nav-analytics"
+                class="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all text-stone-500 dark:text-stone-400 hover:bg-white/30 dark:hover:bg-white/10 hover:text-stone-700 dark:hover:text-stone-200">
+                📈 Analytics (Big Data)
+            </button>
+        </nav>
+        <div class="p-4 border-t border-white/20 dark:border-white/10 space-y-3">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase">Theme</span>
+                <button onclick="toggleTheme()"
+                    class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors" id="theme-icon">
+                    🌙
+                </button>
+            </div>
+            <div class="text-xs text-stone-400">
+                <p>Location: <span class="font-bold text-stone-600 dark:text-stone-300">India</span></p>
+                <p>Tariff: <span class="font-bold text-stone-600 dark:text-stone-300">₹7.00 / Unit</span></p>
+            </div>
+            <button onclick="downloadPDF()"
+                class="w-full py-2 bg-stone-800 dark:bg-orange-600 text-white text-xs font-bold rounded-lg hover:bg-stone-700 dark:hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 shadow-lg">
+                <span>📥</span> Download Report (PDF)
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+
+        <!-- Mobile Header -->
+        <header class="md:hidden glass border-b-0 m-2 rounded-xl p-4 flex justify-between items-center z-20 shadow-sm">
+            <h1 class="text-xl font-bold text-orange-600 flex items-center gap-1">⚡ VoltWatch</h1>
+            <div class="flex gap-2">
+                <button onclick="toggleTheme()"
+                    class="text-stone-600 dark:text-stone-300 p-2 rounded-full hover:bg-black/5"
+                    id="theme-icon-mobile">🌙</button>
+                <button onclick="downloadPDF()"
+                    class="text-stone-600 dark:text-stone-300 p-2 rounded-full hover:bg-black/5"
+                    title="Download PDF">📥</button>
+                <button class="text-stone-600 dark:text-stone-300 font-bold text-xl px-2">☰</button>
+            </div>
+        </header>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay"
+            class="fixed inset-0 bg-stone-50/90 dark:bg-slate-900/90 z-50 hidden flex flex-col items-center justify-center backdrop-blur-sm">
+            <div class="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <h3 class="text-xl font-extrabold text-stone-800 dark:text-white">Simulating Big Data...</h3>
+            <p class="text-stone-500 dark:text-stone-400 font-medium mt-2">Generating 1,000,000+ data points</p>
+        </div>
+
+        <!-- Scrollable Content -->
+        <div class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 z-10" id="content-area">
+
+            <!-- DASHBOARD VIEW -->
+            <section id="view-dashboard" class="fade-in space-y-6">
+                <div class="space-y-2">
+                    <h2 class="text-3xl font-extrabold text-stone-800 dark:text-white">Live Energy Monitor</h2>
+                    <p class="text-stone-500 dark:text-stone-400 max-w-3xl leading-relaxed">
+                        Real-time energy tracking simulating a typical Indian household.
+                        Monitor active load fluctuations and immediate power draws.
+                    </p>
+                </div>
+
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- KPI 1 -->
+                    <div class="glass p-6 rounded-2xl shadow-sm">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p
+                                    class="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
+                                    Real-Time Load</p>
+                                <h3 class="text-4xl font-black text-orange-500 dark:text-orange-400 mt-2"
+                                    id="kpi-watts">
+                                    0 W</h3>
+                            </div>
+                            <span class="text-2xl">⚡</span>
+                        </div>
+                        <p class="text-xs text-stone-500 dark:text-stone-400 mt-2 flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Live Stream
+                        </p>
+                    </div>
+
+                    <!-- KPI 2 -->
+                    <div class="glass p-6 rounded-2xl shadow-sm">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p
+                                    class="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
+                                    Est. Daily Units</p>
+                                <h3 class="text-4xl font-black text-teal-600 dark:text-teal-400 mt-2" id="kpi-units">
+                                    0.00
+                                </h3>
+                            </div>
+                            <span class="text-2xl">🔋</span>
+                        </div>
+                        <p class="text-xs text-stone-500 dark:text-stone-400 mt-2">kWh per day (Based on Inventory)</p>
+                    </div>
+
+                    <!-- KPI 3 -->
+                    <div class="glass p-6 rounded-2xl shadow-sm">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p
+                                    class="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
+                                    Monthly Projection</p>
+                                <h3 class="text-4xl font-black text-stone-700 dark:text-white mt-2" id="kpi-cost">₹0
+                                </h3>
+                            </div>
+                            <span class="text-2xl">₹</span>
+                        </div>
+                        <p class="text-xs text-stone-500 dark:text-stone-400 mt-2">@ ₹7.00/Unit Avg.</p>
+                    </div>
+                </div>
+
+                <!-- Live Chart Section -->
+                <div class="glass p-6 rounded-2xl shadow-sm" data-html2pdf-ignore="true">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-lg font-extrabold text-stone-700 dark:text-stone-200">Power Consumption Trend
+                            (Last 60s)</h3>
+                        <div
+                            class="px-3 py-1 bg-orange-50 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 text-xs font-bold rounded-full border border-orange-100 dark:border-orange-500/30">
+                            Updates every 2s
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="liveChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- INVENTORY VIEW -->
+            <section id="view-inventory" class="hidden fade-in space-y-6">
+                <div class="space-y-2">
+                    <h2 class="text-3xl font-extrabold text-stone-800 dark:text-white">Appliance Registry</h2>
+                    <p class="text-stone-500 dark:text-stone-400 max-w-3xl leading-relaxed">
+                        Manage your household appliances. Use the "Smart Presets" for quick stats or add custom devices.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Form -->
+                    <div class="lg:col-span-4 glass p-6 rounded-2xl shadow-sm h-fit">
+                        <h3 class="text-lg font-extrabold text-stone-700 dark:text-stone-200 mb-4">Add New Device</h3>
+
+                        <!-- Smart Presets -->
+                        <div class="mb-6">
+                            <label
+                                class="block text-xs font-bold text-stone-500 dark:text-stone-400 uppercase mb-2">Quick
+                                Add (Smart Presets)</label>
+                            <div class="grid grid-cols-4 gap-2">
+                                <button onclick="addPreset('Fan', 75, 12)"
+                                    class="p-2 bg-white/50 dark:bg-black/30 hover:bg-orange-50 dark:hover:bg-orange-900/50 border border-white/40 dark:border-white/10 rounded-lg text-xl transition-colors"
+                                    title="Ceiling Fan (75W)">🌀</button>
+                                <button onclick="addPreset('AC 1.5T', 1500, 6)"
+                                    class="p-2 bg-white/50 dark:bg-black/30 hover:bg-teal-50 dark:hover:bg-teal-900/50 border border-white/40 dark:border-white/10 rounded-lg text-xl transition-colors"
+                                    title="AC 1.5 Ton (1500W)">❄️</button>
+                                <button onclick="addPreset('Fridge', 250, 10)"
+                                    class="p-2 bg-white/50 dark:bg-black/30 hover:bg-blue-50 dark:hover:bg-blue-900/50 border border-white/40 dark:border-white/10 rounded-lg text-xl transition-colors"
+                                    title="Refrigerator (250W)">🧊</button>
+                                <button onclick="addPreset('Geyser', 2000, 1)"
+                                    class="p-2 bg-white/50 dark:bg-black/30 hover:bg-red-50 dark:hover:bg-red-900/50 border border-white/40 dark:border-white/10 rounded-lg text-xl transition-colors"
+                                    title="Water Geyser (2000W)">🚿</button>
+                            </div>
+                        </div>
+
+                        <form id="add-item-form" class="space-y-4">
+                            <div>
+                                <label
+                                    class="block text-xs font-bold text-stone-500 dark:text-stone-400 uppercase mb-1">Appliance
+                                    Name</label>
+                                <input type="text" id="input-name" placeholder="e.g. Rice Cooker"
+                                    class="w-full px-4 py-2 bg-white/50 dark:bg-black/30 border border-white/40 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:text-white"
+                                    required>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label
+                                        class="block text-xs font-bold text-stone-500 dark:text-stone-400 uppercase mb-1">Wattage
+                                        (W)</label>
+                                    <input type="number" id="input-watts" placeholder="1000"
+                                        class="w-full px-4 py-2 bg-white/50 dark:bg-black/30 border border-white/40 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:text-white"
+                                        required min="1">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-xs font-bold text-stone-500 dark:text-stone-400 uppercase mb-1">Hrs/Day</label>
+                                    <input type="number" id="input-hours" placeholder="1" step="0.1"
+                                        class="w-full px-4 py-2 bg-white/50 dark:bg-black/30 border border-white/40 dark:border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:text-white"
+                                        min="0.1" max="24">
+                                </div>
+                            </div>
+                            <button type="submit"
+                                class="w-full py-3 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 transition-colors shadow-lg shadow-orange-200 dark:shadow-none">
+                                + Add Custom Device
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- List & Stats -->
+                    <div class="lg:col-span-8 space-y-6">
+                        <div class="glass rounded-2xl shadow-sm overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr
+                                            class="bg-stone-50/50 dark:bg-black/20 border-b border-white/20 dark:border-white/10 text-xs text-stone-500 dark:text-stone-400 uppercase tracking-widest font-extrabold">
+                                            <th class="p-4 font-bold">Device</th>
+                                            <th class="p-4 font-bold">Status</th>
+                                            <th class="p-4 font-bold">Power</th>
+                                            <th class="p-4 font-bold">Daily Usage</th>
+                                            <th class="p-4 font-bold text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="inventory-list"
+                                        class="divide-y divide-stone-100 dark:divide-white/5 text-sm text-stone-700 dark:text-stone-300">
+                                        <!-- JS will populate rows here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- INSIGHTS VIEW -->
+            <section id="view-insights" class="hidden fade-in space-y-6">
+                <div class="space-y-2">
+                    <h2 class="text-3xl font-extrabold text-stone-800 dark:text-white">Cost Analysis</h2>
+                    <p class="text-stone-500 max-w-3xl leading-relaxed">
+                        Breakdown of projected bills. Identify high-consumption appliances.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Distribution Chart -->
+                    <div class="glass p-6 rounded-2xl shadow-sm">
+                        <h3 class="text-lg font-extrabold text-stone-700 dark:text-stone-200 mb-6">Monthly Cost
+                            Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="distributionChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Comparative Chart -->
+                    <div class="glass p-6 rounded-2xl shadow-sm">
+                        <h3 class="text-lg font-extrabold text-stone-700 dark:text-stone-200 mb-6">Highest Consumers (₹
+                            / Month)</h3>
+                        <div class="chart-container">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tip Card -->
+                <div
+                    class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row gap-6 items-center border border-teal-100/50 dark:border-teal-500/20 bg-teal-50/50 dark:bg-teal-900/20">
+                    <div class="text-4xl">💡</div>
+                    <div>
+                        <h4 class="text-lg font-extrabold text-teal-800 dark:text-teal-300">Energy Saving Insight</h4>
+                        <p class="text-teal-700 dark:text-teal-400 opacity-90 text-sm mt-1">
+                            Cooling (Fans/ACs) often accounts for 60% of bills in India.
+                            Efficient use of these appliances can lead to significant savings.
+                        </p>
+                    </div>
+                </div>
+        </div>
+        </section>
+
+        <!-- ANALYTICS VIEW (BIG DATA) -->
+        <section id="view-analytics" class="hidden fade-in space-y-6">
+            <div class="flex justify-between items-end">
+                <div class="space-y-2">
+                    <h2 class="text-3xl font-extrabold text-stone-800 dark:text-white">Historical Analytics</h2>
+                    <p class="text-stone-500 dark:text-stone-400 max-w-3xl leading-relaxed font-medium">
+                        Analyzing long-term trends from <span
+                            class="text-orange-600 dark:text-orange-400 font-bold">1,000,000+</span> simulated minutes.
+                    </p>
+                </div>
+                <!-- Date Range Selector -->
+                <div class="glass p-1 rounded-lg flex items-center gap-1">
+                    <button onclick="updateAnalytics('month')"
+                        class="px-3 py-1.5 text-xs font-bold rounded-md bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300 transition-colors"
+                        id="btn-month">30 Days</button>
+                    <button onclick="updateAnalytics('year')"
+                        class="px-3 py-1.5 text-xs font-bold rounded-md hover:bg-stone-100 dark:hover:bg-white/10 text-stone-500 dark:text-stone-400 transition-colors"
+                        id="btn-year">1 Year</button>
+                    <button onclick="updateAnalytics('all')"
+                        class="px-3 py-1.5 text-xs font-bold rounded-md hover:bg-stone-100 dark:hover:bg-white/10 text-stone-500 dark:text-stone-400 transition-colors"
+                        id="btn-all">All Time</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass p-6 rounded-2xl shadow-sm">
+                    <p class="text-xs font-extrabold text-stone-500 dark:text-stone-400 uppercase tracking-widest">Total
+                        Energy Processed</p>
+                    <h3 class="text-4xl font-black text-stone-800 dark:text-white mt-2 tracking-tight"
+                        id="analytics-total">...</h3>
+                    <p class="text-xs text-stone-400 dark:text-stone-500 mt-2 font-bold">kWh Consumed</p>
+                </div>
+                <div class="glass p-6 rounded-2xl shadow-sm">
+                    <p class="text-xs font-extrabold text-stone-500 dark:text-stone-400 uppercase tracking-widest">Peak
+                        Load Recorded</p>
+                    <h3 class="text-4xl font-black text-orange-600 dark:text-orange-400 mt-2 tracking-tight"
+                        id="analytics-peak">...</h3>
+                    <p class="text-xs text-stone-400 dark:text-stone-500 mt-2 font-bold">kW Max Demand</p>
+                </div>
+                <div class="glass p-6 rounded-2xl shadow-sm">
+                    <p class="text-xs font-extrabold text-stone-500 dark:text-stone-400 uppercase tracking-widest">Data
+                        Points</p>
+                    <h3 class="text-4xl font-black text-teal-600 dark:text-teal-400 mt-2 tracking-tight"
+                        id="analytics-points">...</h3>
+                    <p class="text-xs text-stone-400 dark:text-stone-500 mt-2 font-bold">Minutes Simulated</p>
+                </div>
+            </div>
+
+            <!-- AI Forecast Section -->
+            <div class="glass p-6 rounded-2xl shadow-sm border border-orange-200 dark:border-orange-500/20">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div>
+                        <h3 class="text-lg font-extrabold text-stone-800 dark:text-white flex items-center gap-2">
+                            🤖 AI Cost Predictor <span
+                                class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">TensorFlow.js</span>
+                        </h3>
+                        <p class="text-sm text-stone-500 dark:text-stone-400 mt-1" id="ai-desc">
+                            Train a neural network on your simulation data to forecast next month's bill.
+                        </p>
+                    </div>
+                    <button onclick="trainModel()" id="btn-train"
+                        class="px-6 py-2 bg-stone-800 dark:bg-orange-600 text-white font-bold rounded-lg hover:bg-stone-700 dark:hover:bg-orange-700 transition-all shadow-lg flex items-center gap-2">
+                        🚀 Train Model
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <!-- Prediction Result -->
+                    <div
+                        class="p-6 bg-orange-50/50 dark:bg-orange-900/10 rounded-xl text-center border border-orange-100 dark:border-orange-500/10">
+                        <p
+                            class="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-2">
+                            Next Month Predicted Bill</p>
+                        <h3 class="text-5xl font-black text-stone-800 dark:text-white" id="ai-prediction">--</h3>
+                        <p class="text-xs text-stone-400 mt-2 font-medium" id="train-status">Model not trained yet</p>
+                    </div>
+
+                    <!-- Training Visuals -->
+                    <div>
+                        <p class="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase mb-2">Training Loss</p>
+                        <div class="h-32 w-full bg-white/50 dark:bg-black/20 rounded-lg overflow-hidden relative">
+                            <canvas id="trainingChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Big Data Chart -->
+            <div class="glass p-6 rounded-2xl shadow-sm">
+                <h3 class="text-lg font-extrabold text-stone-700 dark:text-stone-200 mb-6">Load Profile (Downsampled)
+                </h3>
+                <div class="chart-container">
+                    <canvas id="analyticsChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        </div>
+
+        <!-- Mobile Nav Bottom -->
+        <div
+            class="md:hidden glass border-t-0 p-2 flex justify-around shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-2xl mx-1 z-30">
+            <button onclick="switchView('dashboard')"
+                class="p-2 text-2xl flex flex-col items-center gap-1 text-orange-600">
+                <span>📊</span>
+            </button>
+            <button onclick="switchView('inventory')"
+                class="p-2 text-2xl flex flex-col items-center gap-1 text-stone-400">
+                <span>📝</span>
+            </button>
+            <button onclick="switchView('insights')"
+                class="p-2 text-2xl flex flex-col items-center gap-1 text-stone-400">
+                <span>💡</span>
+            </button>
+            <button onclick="switchView('analytics')"
+                class="p-2 text-2xl flex flex-col items-center gap-1 text-stone-400">
+                <span>📈</span>
+            </button>
+        </div>
+
+    </main>
+
+    <script>
+        // --- State Management ---
+        const state = {
+            currentView: 'dashboard',
+            ratePerUnit: 7.00,
+            inventory: [
+                { id: 1, name: 'Ceiling Fan', watts: 75, hours: 12, isActive: true },
+                { id: 2, name: 'Double Door Fridge', watts: 250, hours: 10, isActive: true },
+                { id: 3, name: 'AC (1.5 Ton)', watts: 1500, hours: 6, isActive: false },
+                { id: 4, name: 'Water Geyser', watts: 2000, hours: 0.8, isActive: false },
+                { id: 5, name: 'LED Tube Light', watts: 20, hours: 6, isActive: true }
+            ],
+            liveHistory: Array(20).fill(0).map(() => 0),
+            charts: {},
+            bigData: [], // Will hold 1M+ points
+            isBigDataGenerated: false
+        };
+
+        // --- Core Logic ---
+
+        function calculateMetrics() {
+            let totalDailyUnits = 0;
+            let totalCapacity = 0;
+
+            state.inventory.forEach(item => {
+                totalDailyUnits += (item.watts * item.hours) / 1000;
+                totalCapacity += item.watts;
+            });
+
+            const monthlyCost = totalDailyUnits * 30 * state.ratePerUnit;
+
+            // DOM Updates
+            document.getElementById('kpi-units').innerText = totalDailyUnits.toFixed(2);
+            document.getElementById('kpi-cost').innerText = '₹' + Math.floor(monthlyCost).toLocaleString('en-IN');
+
+            return { totalCapacity, totalDailyUnits, monthlyCost };
+        }
+
+        function switchView(viewId) {
+            state.currentView = viewId;
+
+            ['dashboard', 'inventory', 'insights', 'analytics'].forEach(id => {
+                const el = document.getElementById(`view-${id}`);
+                if (id === viewId) {
+                    el.classList.remove('hidden');
+                    el.classList.add('fade-in');
+                } else {
+                    el.classList.add('hidden');
+                    el.classList.remove('fade-in');
+                }
+            });
+
+            ['dashboard', 'inventory', 'insights', 'analytics'].forEach(id => {
+                const btn = document.getElementById(`nav-${id}`);
+                if (btn) {
+                    if (id === viewId) {
+                        btn.classList.remove('text-stone-500', 'dark:text-stone-400', 'hover:bg-white/30', 'dark:hover:bg-white/10');
+                        btn.classList.add('glass', 'shadow-sm', 'text-orange-600', 'dark:text-orange-400', 'border-white/40');
+                    } else {
+                        btn.classList.add('text-stone-500', 'dark:text-stone-400', 'hover:bg-white/30', 'dark:hover:bg-white/10');
+                        btn.classList.remove('glass', 'shadow-sm', 'text-orange-600', 'dark:text-orange-400', 'border-white/40');
+                    }
+                }
+            });
+
+            if (viewId === 'insights' || viewId === 'dashboard') {
+                updateCharts();
+            }
+
+            if (viewId === 'analytics' && !state.isBigDataGenerated) {
+                // Trigger Big Data Generation
+                document.getElementById('loading-overlay').classList.remove('hidden');
+                document.getElementById('loading-overlay').classList.add('flex');
+
+                // Allow UI to paint the loading screen before blocking JS with heavy calculation
+                setTimeout(() => {
+                    generateBigData();
+                    state.isBigDataGenerated = true;
+                    document.getElementById('loading-overlay').classList.add('hidden');
+                    document.getElementById('loading-overlay').classList.remove('flex');
+                    updateAnalytics('month'); // Default view
+                }, 100);
+            }
+        }
+
+        // --- Inventory Management ---
+        function renderInventory() {
+            const tbody = document.getElementById('inventory-list');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (state.inventory.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-stone-400 italic">No items added.</td></tr>`;
+                return;
+            }
+
+            state.inventory.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-stone-50 transition-colors";
+                // Badges
+                const statusBadge = item.isActive
+                    ? `<span class="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold dark:bg-green-900/50 dark:text-green-300">Active</span>`
+                    : `<span class="px-2 py-1 rounded-full bg-stone-100 text-stone-500 text-xs font-bold dark:bg-stone-700/50 dark:text-stone-400">Standby</span>`;
+
+                tr.innerHTML = `
+                <td class="p-4 font-bold text-stone-700 dark:text-stone-300">${item.name}</td>
+                <td class="p-4">${statusBadge}</td>
+                <td class="p-4">${item.watts} W</td>
+                <td class="p-4">${item.hours} hrs</td>
+                <td class="p-4 text-right">
+                    <button onclick="deleteItem(${item.id})" class="text-stone-300 hover:text-red-500 transition-colors font-bold text-lg dark:text-stone-600">×</button>
+                </td>
+            `;
+                tbody.appendChild(tr);
+            });
+
+            calculateMetrics();
+            updateCharts();
+        }
+
+        function addItem(e) {
+            e.preventDefault();
+            const name = document.getElementById('input-name').value;
+            const watts = parseFloat(document.getElementById('input-watts').value);
+            let hours = parseFloat(document.getElementById('input-hours').value);
+
+            // Smart default if empty or 0
+            if (!hours || hours <= 0) hours = 1;
+
+            if (name && watts > 0) {
+                state.inventory.push({
+                    id: Date.now(),
+                    name,
+                    watts,
+                    hours,
+                    isActive: true // Default to active for simulation fun
+                });
+                document.getElementById('add-item-form').reset();
+                renderInventory();
+            }
+        }
+
+        function addPreset(name, watts, hours) {
+            state.inventory.push({
+                id: Date.now(),
+                name,
+                watts,
+                hours,
+                isActive: true
+            });
+            renderInventory();
+            // Visual feedback could go here
+        }
+
+        function deleteItem(id) {
+            state.inventory = state.inventory.filter(i => i.id !== id);
+            renderInventory();
+        }
+
+        // --- Theme Logic ---
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            updateThemeIcon(isDark);
+            updateChartTheme(isDark);
+        }
+
+        function initTheme() {
+            // Check local storage or system preference
+            const savedTheme = localStorage.getItem('theme');
+            const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+            if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
+                document.documentElement.classList.add('dark');
+                updateThemeIcon(true);
+            } else {
+                document.documentElement.classList.remove('dark');
+                updateThemeIcon(false);
+            }
+        }
+
+        function updateThemeIcon(isDark) {
+            const icon = isDark ? '☀️' : '🌙';
+            const desktopBtn = document.getElementById('theme-icon');
+            const mobileBtn = document.getElementById('theme-icon-mobile');
+            if (desktopBtn) desktopBtn.innerText = icon;
+            if (mobileBtn) mobileBtn.innerText = icon;
+        }
+
+        function updateChartTheme(isDark) {
+
+            const textColor = isDark ? '#a8a29e' : '#78716c';
+            const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : '#f5f5f4';
+
+            // Live and Analytics charts update
+            [state.charts.live, state.charts.dist, state.charts.bar, state.charts.analytics].forEach(chart => {
+                if (!chart) return;
+
+                if (chart.options.scales) {
+                    if (chart.options.scales.x) {
+                        chart.options.scales.x.ticks = { ...chart.options.scales.x.ticks, color: textColor };
+                        if (chart.options.scales.x.grid) chart.options.scales.x.grid.color = gridColor;
+                    }
+                    if (chart.options.scales.y) {
+                        chart.options.scales.y.ticks = { ...chart.options.scales.y.ticks, color: textColor };
+                        if (chart.options.scales.y.grid) chart.options.scales.y.grid.color = gridColor;
+                        if (chart.options.scales.y.title) chart.options.scales.y.title.color = textColor;
+                    }
+
+                    // Legend text for Doughnut
+                    if (chart.options.plugins.legend) {
+                        chart.options.plugins.legend.labels.color = textColor;
+                    }
+                }
+                chart.update();
+            });
+        }
+
+        // --- Visualization ---
+
+        function initCharts() {
+            Chart.defaults.font.family = "'Outfit', sans-serif";
+            Chart.defaults.color = '#78716c';
+
+            // 1. Live Chart
+            const ctxLive = document.getElementById('liveChart')?.getContext('2d');
+            if (ctxLive) {
+                state.charts.live = new Chart(ctxLive, {
+                    type: 'line',
+                    data: {
+                        labels: Array(20).fill(''),
+                        datasets: [{
+                            label: 'Watts',
+                            data: state.liveHistory,
+                            borderColor: '#f97316',
+                            backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: { duration: 0 },
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.05)' : '#f5f5f4' }, ticks: { color: document.documentElement.classList.contains('dark') ? '#a8a29e' : '#78716c' } },
+                            x: { display: false }
+                        }
+                    }
+                });
+            }
+
+            // 2. Distribution Chart (Doughnut)
+            const ctxDist = document.getElementById('distributionChart')?.getContext('2d');
+            if (ctxDist) {
+                state.charts.dist = new Chart(ctxDist, {
+                    type: 'doughnut',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    boxWidth: 12,
+                                    color: document.documentElement.classList.contains('dark') ? '#a8a29e' : '#78716c'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 3. Cost Bar Chart
+            const ctxBar = document.getElementById('barChart')?.getContext('2d');
+            if (ctxBar) {
+                state.charts.bar = new Chart(ctxBar, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Monthly Cost (₹)', color: document.documentElement.classList.contains('dark') ? '#a8a29e' : '#78716c' },
+                                grid: { color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.05)' : '#f5f5f4' },
+                                ticks: { color: document.documentElement.classList.contains('dark') ? '#a8a29e' : '#78716c' }
+                            },
+                            x: { grid: { display: false }, ticks: { color: document.documentElement.classList.contains('dark') ? '#a8a29e' : '#78716c' } }
+                        }
+                    }
+                });
+            }
+        }
+
+        function updateCharts() {
+            if (!state.charts.dist || !state.charts.bar) return;
+
+            const labels = state.inventory.map(i => i.name);
+            const costData = state.inventory.map(i => (i.watts * i.hours / 1000 * 30 * state.ratePerUnit));
+            const colors = ['#f97316', '#14b8a6', '#f59e0b', '#6366f1', '#8b5cf6', '#ec4899', '#84cc16'];
+
+            // Dist Chart
+            state.charts.dist.data = {
+                labels: labels,
+                datasets: [{
+                    data: costData,
+                    backgroundColor: colors,
+                    borderWidth: 0
+                }]
+            };
+            state.charts.dist.update();
+
+            // Bar Chart
+            state.charts.bar.data = {
+                labels: labels,
+                datasets: [{
+                    label: 'Monthly Cost (₹)',
+                    data: costData,
+                    backgroundColor: '#14b8a6',
+                    borderRadius: 4
+                }]
+            };
+            state.charts.bar.update();
+        }
+
+        // --- Big Data Engine ---
+        // Logic moved to dataLogic.js
+
+        // --- Live Simulation ---
+        function startSimulation() {
+            setInterval(() => {
+                const { totalCapacity } = calculateMetrics();
+
+                // Randomly toggle "Active" state for visual realism in registry
+                if (Math.random() > 0.7) {
+                    const randomIdx = Math.floor(Math.random() * state.inventory.length);
+                    if (state.inventory[randomIdx]) {
+                        state.inventory[randomIdx].isActive = !state.inventory[randomIdx].isActive;
+                        renderInventory(); // Re-render badges
+                    }
+                }
+
+                // Calculate load based on ONLY active devices + some variable noise
+                let activeLoad = 0;
+                state.inventory.forEach(item => {
+                    if (item.isActive) activeLoad += item.watts;
+                });
+
+                // Add small fluctuation (noise) +- 5%
+                let noise = activeLoad * 0.05 * (Math.random() - 0.5);
+                let currentLoad = Math.round(Math.max(0, activeLoad + noise));
+
+                // Update DOM
+                const kpiWatts = document.getElementById('kpi-watts');
+                if (kpiWatts) kpiWatts.innerText = currentLoad + ' W';
+
+                // Chart Queue
+                state.liveHistory.push(currentLoad);
+                state.liveHistory.shift();
+
+                // Chart Update
+                if (state.charts.live) {
+                    state.charts.live.data.datasets[0].data = state.liveHistory;
+                    state.charts.live.update();
+                }
+
+            }, 2000);
+        }
+
+        // --- PDF Export Logic ---
+        function downloadPDF() {
+            const element = document.getElementById('content-area');
+
+            // Define options for html2pdf
+            const opt = {
+                margin: [10, 10], // top, left, bottom, right
+                filename: 'VoltWatch_Energy_Report.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 }, // Higher scale for better clarity
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            // Important: We should ensure all sections are visible for the PDF
+            // Temporarily remove 'hidden' classes to capture full report
+            const views = ['view-dashboard', 'view-inventory', 'view-insights'];
+            const restoreStates = views.map(id => document.getElementById(id).classList.contains('hidden'));
+
+            views.forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.remove('hidden');
+                el.classList.add('block'); // ensure block display
+            });
+
+            // Force chart updates so they render before capture
+            updateCharts();
+
+            // Generate PDF
+            html2pdf().set(opt).from(element).save().then(() => {
+                // Restore original view state
+                views.forEach((id, index) => {
+                    const el = document.getElementById(id);
+                    el.classList.remove('block');
+                    if (restoreStates[index]) {
+                        el.classList.add('hidden');
+                    }
+                });
+                // Switch back to ensure state consistency
+                switchView(state.currentView);
+            });
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            document.getElementById('add-item-form')?.addEventListener('submit', addItem);
+            renderInventory();
+            initCharts();
+            updateCharts();
+            startSimulation();
+            calculateMetrics();
+        });
+
+    </script>
+</body>
+
+</html>
